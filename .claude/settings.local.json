@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az account set:*)",
+      "Bash(az account show:*)",
+      "Bash(az group create:*)",
+      "Bash(az deployment group create:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(az bicep build:*)",
+      "Bash(az version:*)",
+      "Bash(az deployment group:*)",
+      "Bash(az resource list:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(az rest:*)",
+      "Bash(az vm list-skus:*)",
+      "Bash(az provider show:*)",
+      "Bash(az quota usage list:*)",
+      "Bash(az deployment operation group list:*)",
+      "Bash(az apim show:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

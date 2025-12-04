@@ -1,0 +1,149 @@
+<!--
+    StreamBridge API Management Policy
+
+    This policy applies to the /uploadTelemetry endpoint and provides:
+    - Rate limiting (100 calls per minute per subscription)
+    - Content validation (JSON only, max 100KB)
+    - CORS support for browser clients
+    - Request/Response logging
+    - Backend routing to Logic Apps
+-->
+<policies>
+    <inbound>
+        <base />
+
+        <!-- Rate Limiting: 100 calls per minute per subscription key -->
+        <rate-limit-by-key
+            calls="100"
+            renewal-period="60"
+            counter-key="@(context.Subscription?.Key ?? context.Request.IpAddress)"
+            increment-condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 400)"
+            retry-after-header-name="Retry-After"
+            remaining-calls-header-name="X-RateLimit-Remaining" />
+
+        <!-- Content Validation -->
+        <validate-content
+            unspecified-content-type-action="prevent"
+            max-size="102400"
+            size-exceeded-action="prevent"
+            errors-variable-name="validationErrors">
+            <content type="application/json" validate-as="json" action="prevent" />
+        </validate-content>
+
+        <!-- CORS for browser-based clients -->
+        <cors allow-credentials="false">
+            <allowed-origins>
+                <origin>*</origin>
+            </allowed-origins>
+            <allowed-methods preflight-result-max-age="300">
+                <method>POST</method>
+                <method>OPTIONS</method>
+            </allowed-methods>
+            <allowed-headers>
+                <header>Content-Type</header>
+                <header>Ocp-Apim-Subscription-Key</header>
+            </allowed-headers>
+        </cors>
+
+        <!-- Add correlation ID for request tracking -->
+        <set-header name="X-Correlation-ID" exists-action="skip">
+            <value>@(Guid.NewGuid().ToString())</value>
+        </set-header>
+
+        <!-- Add request timestamp -->
+        <set-header name="X-Request-Timestamp" exists-action="override">
+            <value>@(DateTime.UtcNow.ToString("o"))</value>
+        </set-header>
+
+        <!-- Route to Logic App -->
+        <set-backend-service base-url="{{LogicAppCallbackUrl}}" />
+
+    </inbound>
+
+    <backend>
+        <base />
+        <!-- Forward to Logic Apps with retry policy -->
+        <retry
+            condition="@(context.Response.StatusCode == 429 || context.Response.StatusCode >= 500)"
+            count="3"
+            interval="2"
+            max-interval="10"
+            delta="1"
+            first-fast-retry="true">
+            <forward-request timeout="30" />
+        </retry>
+    </backend>
+
+    <outbound>
+        <base />
+
+        <!-- Add response headers -->
+        <set-header name="X-Powered-By" exists-action="delete" />
+        <set-header name="X-AspNet-Version" exists-action="delete" />
+
+        <set-header name="X-StreamBridge-Version" exists-action="override">
+            <value>1.0.0</value>
+        </set-header>
+
+        <!-- Add processing time header -->
+        <set-header name="X-Processing-Time-Ms" exists-action="override">
+            <value>@(context.Elapsed.TotalMilliseconds.ToString("F0"))</value>
+        </set-header>
+
+    </outbound>
+
+    <on-error>
+        <base />
+
+        <!-- Custom error response -->
+        <choose>
+            <when condition="@(context.LastError.Reason == "RateLimitExceeded")">
+                <return-response>
+                    <set-status code="429" reason="Too Many Requests" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        return new JObject(
+                            new JProperty("success", false),
+                            new JProperty("error", "Rate limit exceeded"),
+                            new JProperty("message", "You have exceeded the rate limit. Please try again later."),
+                            new JProperty("retryAfter", context.Response.Headers.GetValueOrDefault("Retry-After", "60"))
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </when>
+            <when condition="@(context.LastError.Reason == "ContentValidation")">
+                <return-response>
+                    <set-status code="400" reason="Bad Request" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        return new JObject(
+                            new JProperty("success", false),
+                            new JProperty("error", "Invalid content"),
+                            new JProperty("message", "Request body must be valid JSON and not exceed 100KB")
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </when>
+            <otherwise>
+                <return-response>
+                    <set-status code="500" reason="Internal Server Error" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        return new JObject(
+                            new JProperty("success", false),
+                            new JProperty("error", "Internal error"),
+                            new JProperty("message", "An unexpected error occurred. Please try again."),
+                            new JProperty("correlationId", context.Request.Headers.GetValueOrDefault("X-Correlation-ID", "unknown"))
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </otherwise>
+        </choose>
+    </on-error>
+</policies>

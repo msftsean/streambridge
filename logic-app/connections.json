@@ -1,0 +1,14 @@
+{
+  "managedApiConnections": {},
+  "serviceProviderConnections": {
+    "azureCosmosDB": {
+      "parameterValues": {
+        "connectionString": "@appsetting('COSMOS_CONNECTION_STRING')"
+      },
+      "serviceProvider": {
+        "id": "/serviceProviders/azureCosmosDB"
+      },
+      "displayName": "Azure Cosmos DB Connection"
+    }
+  }
+}

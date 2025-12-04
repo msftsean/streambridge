@@ -1,0 +1,280 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      },
+      "cosmosConnectionString": {
+        "defaultValue": "",
+        "type": "SecureString"
+      },
+      "functionAppUrl": {
+        "defaultValue": "",
+        "type": "String"
+      }
+    },
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              },
+              "telemetryType": {
+                "type": "string",
+                "enum": ["metrics", "logs", "events", "crashDump"]
+              },
+              "data": {
+                "type": "object"
+              },
+              "crashDump": {
+                "type": ["object", "null"],
+                "properties": {
+                  "dumpId": {
+                    "type": "string"
+                  },
+                  "errorCode": {
+                    "type": "string"
+                  },
+                  "stackTrace": {
+                    "type": "string"
+                  },
+                  "processName": {
+                    "type": "string"
+                  },
+                  "memoryDumpUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": ["deviceId", "region", "timestamp", "telemetryType"]
+          }
+        },
+        "operationOptions": "EnableSchemaValidation"
+      }
+    },
+    "actions": {
+      "Initialize_ProcessingResult": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "processingResult",
+              "type": "object",
+              "value": {
+                "status": "pending",
+                "message": ""
+              }
+            }
+          ]
+        },
+        "runAfter": {}
+      },
+      "Initialize_DocumentId": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "documentId",
+              "type": "string",
+              "value": "@{guid()}"
+            }
+          ]
+        },
+        "runAfter": {
+          "Initialize_ProcessingResult": ["Succeeded"]
+        }
+      },
+      "Validate_Payload_Schema": {
+        "type": "Compose",
+        "inputs": {
+          "isValid": "@and(not(empty(triggerBody()?['deviceId'])), not(empty(triggerBody()?['region'])), not(empty(triggerBody()?['timestamp'])))",
+          "deviceId": "@triggerBody()?['deviceId']",
+          "region": "@triggerBody()?['region']",
+          "timestamp": "@triggerBody()?['timestamp']",
+          "telemetryType": "@triggerBody()?['telemetryType']"
+        },
+        "runAfter": {
+          "Initialize_DocumentId": ["Succeeded"]
+        }
+      },
+      "Check_Payload_Valid": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "not": {
+                "equals": ["@triggerBody()?['deviceId']", null]
+              }
+            },
+            {
+              "not": {
+                "equals": ["@triggerBody()?['region']", null]
+              }
+            }
+          ]
+        },
+        "actions": {
+          "Check_For_Crash_Dump": {
+            "type": "If",
+            "expression": {
+              "and": [
+                {
+                  "not": {
+                    "equals": ["@triggerBody()?['crashDump']", null]
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "Call_ProcessCrashDump_Function": {
+                "type": "Http",
+                "inputs": {
+                  "method": "POST",
+                  "uri": "@{parameters('functionAppUrl')}/api/ProcessCrashDump",
+                  "headers": {
+                    "Content-Type": "application/json"
+                  },
+                  "body": {
+                    "documentId": "@variables('documentId')",
+                    "deviceId": "@triggerBody()?['deviceId']",
+                    "region": "@triggerBody()?['region']",
+                    "timestamp": "@triggerBody()?['timestamp']",
+                    "crashDump": "@triggerBody()?['crashDump']"
+                  }
+                },
+                "runAfter": {}
+              },
+              "Set_CrashDump_Result": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "processingResult",
+                  "value": {
+                    "status": "processed",
+                    "message": "Crash dump processed successfully",
+                    "functionResponse": "@body('Call_ProcessCrashDump_Function')"
+                  }
+                },
+                "runAfter": {
+                  "Call_ProcessCrashDump_Function": ["Succeeded"]
+                }
+              }
+            },
+            "else": {
+              "actions": {
+                "Set_Telemetry_Only_Result": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "processingResult",
+                    "value": {
+                      "status": "stored",
+                      "message": "Telemetry data stored successfully"
+                    }
+                  }
+                }
+              }
+            },
+            "runAfter": {}
+          },
+          "Prepare_Cosmos_Document": {
+            "type": "Compose",
+            "inputs": {
+              "id": "@variables('documentId')",
+              "deviceId": "@triggerBody()?['deviceId']",
+              "region": "@triggerBody()?['region']",
+              "timestamp": "@triggerBody()?['timestamp']",
+              "telemetryType": "@triggerBody()?['telemetryType']",
+              "data": "@triggerBody()?['data']",
+              "crashDump": "@triggerBody()?['crashDump']",
+              "processingResult": "@variables('processingResult')",
+              "ingestedAt": "@utcNow()",
+              "_partitionKey": "@triggerBody()?['region']"
+            },
+            "runAfter": {
+              "Check_For_Crash_Dump": ["Succeeded"]
+            }
+          },
+          "Store_In_Cosmos_DB": {
+            "type": "Http",
+            "inputs": {
+              "method": "POST",
+              "uri": "https://@{split(parameters('cosmosConnectionString'), ';')[0]}.documents.azure.com/dbs/StreamBridgeDemo/colls/TelemetryData/docs",
+              "headers": {
+                "Content-Type": "application/json",
+                "x-ms-documentdb-partitionkey": "[\"@{triggerBody()?['region']}\"]"
+              },
+              "body": "@outputs('Prepare_Cosmos_Document')",
+              "authentication": {
+                "type": "ManagedServiceIdentity",
+                "audience": "https://cosmos.azure.com"
+              }
+            },
+            "runAfter": {
+              "Prepare_Cosmos_Document": ["Succeeded"]
+            }
+          },
+          "Success_Response": {
+            "type": "Response",
+            "kind": "Http",
+            "inputs": {
+              "statusCode": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "success": true,
+                "documentId": "@variables('documentId')",
+                "message": "Telemetry data ingested successfully",
+                "processingResult": "@variables('processingResult')",
+                "timestamp": "@utcNow()"
+              }
+            },
+            "runAfter": {
+              "Store_In_Cosmos_DB": ["Succeeded"]
+            }
+          }
+        },
+        "else": {
+          "actions": {
+            "Invalid_Payload_Response": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 400,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "success": false,
+                  "error": "Invalid payload",
+                  "message": "Required fields missing: deviceId, region, timestamp are required",
+                  "timestamp": "@utcNow()"
+                }
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "Validate_Payload_Schema": ["Succeeded"]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}
