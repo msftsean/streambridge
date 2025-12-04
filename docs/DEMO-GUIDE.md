@@ -1,63 +1,89 @@
-# StreamBridge Demo Guide
+# 📘 StreamBridge Demo Guide
 
-This guide walks you through deploying and demonstrating the StreamBridge serverless telemetry ingestion pipeline.
+[![Deployment](https://img.shields.io/badge/Deployment-Bicep-orange?style=flat-square)](../infrastructure/main.bicep)
+[![Time](https://img.shields.io/badge/Time-20--30_min-blue?style=flat-square)]()
+[![Difficulty](https://img.shields.io/badge/Difficulty-Beginner-green?style=flat-square)]()
 
-**Estimated Time: 20-30 minutes**
+> 🚀 This guide walks you through deploying and demonstrating the StreamBridge serverless telemetry ingestion pipeline.
 
----
-
-## Prerequisites
-
-### Required Tools
-
-| Tool | Version | Installation |
-|------|---------|--------------|
-| Azure CLI | 2.50+ | `winget install Microsoft.AzureCLI` |
-| PowerShell | 7+ | `winget install Microsoft.PowerShell` |
-| Azure Functions Core Tools | 4.x | `npm install -g azure-functions-core-tools@4` |
-
-### Azure Requirements
-
-- Active Azure subscription
-- Owner or Contributor role on subscription
-- Available quota in `eastus2` region for:
-  - Cosmos DB (Serverless)
-  - Function App (Consumption)
-  - Logic Apps (Standard)
-  - API Management (Consumption)
+**⏱️ Estimated Time: 20-30 minutes**
 
 ---
 
-## Part 1: Infrastructure Deployment (15 minutes)
+## 📋 Prerequisites
 
-### Step 1.1: Clone and Navigate
+### 🛠️ Required Tools
+
+| Tool | Version | Installation | Status |
+|------|---------|--------------|--------|
+| ![Azure CLI](https://img.shields.io/badge/Azure_CLI-2.50+-0078D4?style=flat-square&logo=microsoftazure) | 2.50+ | `winget install Microsoft.AzureCLI` | ![Required](https://img.shields.io/badge/-Required-red) |
+| ![PowerShell](https://img.shields.io/badge/PowerShell-7+-5391FE?style=flat-square&logo=powershell&logoColor=white) | 7+ | `winget install Microsoft.PowerShell` | ![Required](https://img.shields.io/badge/-Required-red) |
+| ![Azure Functions](https://img.shields.io/badge/Functions_Tools-4.x-yellow?style=flat-square) | 4.x | `npm install -g azure-functions-core-tools@4` | ![Optional](https://img.shields.io/badge/-Optional-yellow) |
+
+### ☁️ Azure Requirements
+
+| Requirement | Description |
+|-------------|-------------|
+| 🔑 Active Azure subscription | Valid subscription with billing |
+| 👤 Role | Owner or Contributor on subscription |
+| 🌍 Region quota | `eastus2` for all resources |
+
+**Resources needed:**
+- 📄 Cosmos DB (Serverless)
+- 🐍 Function App (Consumption)
+- ⚡ Logic Apps (Consumption)
+- 🔐 API Management (Developer)
+
+---
+
+## 🏗️ Part 1: Infrastructure Deployment
+
+**⏱️ Time: ~15 minutes**
+
+### Step 1.1: Clone and Navigate 📁
 
 ```powershell
 cd c:\Users\segayle\repos\streambridge
 ```
 
-### Step 1.2: Login to Azure
+### Step 1.2: Login to Azure 🔐
 
 ```powershell
+# Login to Azure
 az login
-az account show  # Verify correct subscription
+
+# Verify correct subscription
+az account show
 ```
 
-### Step 1.3: Deploy Infrastructure
+✅ **Expected:** Your subscription name and ID displayed
+
+### Step 1.3: Deploy Infrastructure 🚀
+
+<details>
+<summary>📌 Option A: Using Deployment Script (Recommended)</summary>
 
 ```powershell
-# Option A: Using deployment script
 .\scripts\deploy.ps1 -ResourceGroupName "rg-streambridge" -Location "eastus2"
+```
+</details>
 
-# Option B: Manual Bicep deployment
+<details>
+<summary>📌 Option B: Manual Bicep Deployment</summary>
+
+```powershell
+# Create resource group
 az group create --name rg-streambridge --location eastus2
+
+# Deploy Bicep template
 az deployment group create `
     --resource-group rg-streambridge `
     --template-file infrastructure/main.bicep `
     --parameters location=eastus2 environment=dev
 ```
+</details>
 
-### Step 1.4: Capture Deployment Outputs
+### Step 1.4: Capture Deployment Outputs 📝
 
 After deployment, note these values:
 
@@ -69,68 +95,82 @@ az deployment group show `
     --query "properties.outputs" -o table
 ```
 
-**Save these values:**
-- `cosmosAccountName`: _______________
-- `functionAppName`: _______________
-- `logicAppName`: _______________
-- `apimName`: _______________
-- `apiEndpoint`: _______________
+**📋 Save These Values:**
+
+| Output | Your Value |
+|--------|------------|
+| 📄 `cosmosAccountName` | _______________ |
+| 🐍 `functionAppName` | _______________ |
+| ⚡ `logicAppName` | _______________ |
+| 🔐 `apimName` | _______________ |
+| 🌐 `apiEndpoint` | _______________ |
 
 ---
 
-## Part 2: Deploy Application Code (5 minutes)
+## 🐍 Part 2: Deploy Application Code
+
+**⏱️ Time: ~5 minutes**
 
 ### Step 2.1: Deploy Function App
 
 ```powershell
 cd function-app
 
-# Create virtual environment (optional, for local testing)
+# 📦 Create virtual environment (optional, for local testing)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# Deploy to Azure
+# 🚀 Deploy to Azure
 func azure functionapp publish <functionAppName> --python
 
 cd ..
 ```
 
-### Step 2.2: Deploy Logic App Workflow
+✅ **Expected:** "Deployment successful" message
 
-The Logic App workflow is deployed via Azure Portal or CLI:
+### Step 2.2: Deploy Logic App Workflow ⚡
 
 ```powershell
-# Zip the logic app files
+# 📦 Zip the logic app files
 Compress-Archive -Path "logic-app\*" -DestinationPath "logicapp.zip" -Force
 
-# Deploy
+# 🚀 Deploy
 az functionapp deployment source config-zip `
     --resource-group rg-streambridge `
     --name <logicAppName> `
     --src logicapp.zip
 
+# 🧹 Cleanup
 Remove-Item logicapp.zip
 ```
 
 ---
 
-## Part 3: Configure APIM (5 minutes)
+## 🔐 Part 3: Configure APIM
 
-### Step 3.1: Get Logic App Callback URL
+**⏱️ Time: ~5 minutes**
+
+### Step 3.1: Get Logic App Callback URL 🔗
+
+<details>
+<summary>🖥️ Via Azure Portal</summary>
+
+1. Go to **Logic App** → **Workflows** → **TelemetryIngestion**
+2. Click **"Workflow URL"** and copy the URL
+</details>
+
+<details>
+<summary>💻 Via CLI</summary>
 
 ```powershell
-# In Azure Portal:
-# 1. Go to Logic App → Workflows → TelemetryIngestion
-# 2. Click "Workflow URL" and copy the URL
-
-# Or via CLI (after workflow is created)
 az rest --method post `
     --uri "https://management.azure.com/subscriptions/{sub}/resourceGroups/rg-streambridge/providers/Microsoft.Web/sites/<logicAppName>/hostruntime/runtime/webhooks/workflow/api/management/workflows/TelemetryIngestion/triggers/manual/listCallbackUrl?api-version=2022-03-01" `
     --query "value" -o tsv
 ```
+</details>
 
-### Step 3.2: Update APIM Backend
+### Step 3.2: Update APIM Backend 🔧
 
 ```powershell
 # Set the Logic App URL as a named value in APIM
@@ -142,7 +182,7 @@ az apim nv create `
     --value "<logic-app-callback-url>"
 ```
 
-### Step 3.3: Get Subscription Key
+### Step 3.3: Get Subscription Key 🔑
 
 ```powershell
 $subscriptionKey = az apim subscription show `
@@ -151,14 +191,16 @@ $subscriptionKey = az apim subscription show `
     --subscription-id demo-subscription `
     --query "primaryKey" -o tsv
 
-Write-Host "Subscription Key: $subscriptionKey"
+Write-Host "🔑 Subscription Key: $subscriptionKey"
 ```
 
 ---
 
-## Part 4: Demo Scenarios
+## 🎬 Part 4: Demo Scenarios
 
-### Scenario 1: Basic Telemetry Ingestion
+### Scenario 1: Basic Telemetry Ingestion 📊
+
+![Status](https://img.shields.io/badge/Scenario-Telemetry-blue?style=flat-square)
 
 ```powershell
 $headers = @{
@@ -189,12 +231,18 @@ $response = Invoke-RestMethod `
 $response | ConvertTo-Json -Depth 5
 ```
 
-**Expected Result:**
-- Status 200
-- `documentId` returned
-- `processingResult.status` = "stored"
+**✅ Expected Result:**
+| Field | Value |
+|-------|-------|
+| Status | `200` |
+| `documentId` | `<guid>` |
+| `processingResult.status` | `"stored"` |
 
-### Scenario 2: Crash Dump Processing
+---
+
+### Scenario 2: Crash Dump Processing 💥
+
+![Status](https://img.shields.io/badge/Scenario-Crash_Dump-red?style=flat-square)
 
 ```powershell
 $crashBody = @{
@@ -224,15 +272,21 @@ $response = Invoke-RestMethod `
 $response | ConvertTo-Json -Depth 10
 ```
 
-**Expected Result:**
-- Status 200
-- `processingResult.status` = "processed"
-- `processingResult.functionResponse` contains crash analysis
+**✅ Expected Result:**
+| Field | Value |
+|-------|-------|
+| Status | `200` |
+| `processingResult.status` | `"processed"` |
+| `processingResult.functionResponse` | Contains crash analysis |
 
-### Scenario 3: Rate Limiting Demo
+---
+
+### Scenario 3: Rate Limiting Demo 🚦
+
+![Status](https://img.shields.io/badge/Scenario-Rate_Limit-orange?style=flat-square)
 
 ```powershell
-# Send 110 requests quickly to trigger rate limiting
+# 📊 Send 110 requests quickly to trigger rate limiting
 1..110 | ForEach-Object {
     try {
         $result = Invoke-RestMethod `
@@ -240,19 +294,25 @@ $response | ConvertTo-Json -Depth 10
             -Method POST `
             -Headers $headers `
             -Body $body
-        Write-Host "Request $_: Success"
+        Write-Host "✅ Request $_: Success" -ForegroundColor Green
     }
     catch {
-        Write-Host "Request $_: Rate Limited - $($_.Exception.Response.StatusCode)"
+        Write-Host "🚫 Request $_: Rate Limited - $($_.Exception.Response.StatusCode)" -ForegroundColor Red
     }
 }
 ```
 
-**Expected Result:**
-- First 100 requests succeed
-- Remaining requests return 429
+**✅ Expected Result:**
+| Requests | Result |
+|----------|--------|
+| 1-100 | ✅ Success |
+| 101-110 | 🚫 HTTP 429 |
 
-### Scenario 4: Invalid Payload
+---
+
+### Scenario 4: Invalid Payload ❌
+
+![Status](https://img.shields.io/badge/Scenario-Validation-yellow?style=flat-square)
 
 ```powershell
 $invalidBody = @{
@@ -267,99 +327,97 @@ try {
         -Body $invalidBody
 }
 catch {
-    Write-Host "Status: $($_.Exception.Response.StatusCode)"
+    Write-Host "❌ Status: $($_.Exception.Response.StatusCode)" -ForegroundColor Yellow
     $_.ErrorDetails.Message
 }
 ```
 
-**Expected Result:**
-- Status 400
-- Error message about missing required fields
+**✅ Expected Result:**
+| Field | Value |
+|-------|-------|
+| Status | `400 Bad Request` |
+| Message | Missing required fields |
 
 ---
 
-## Part 5: Verification in Azure Portal
+## 🔍 Part 5: Verification in Azure Portal
 
-### 5.1: Check Cosmos DB Data
+### 5.1: Check Cosmos DB Data 📄
 
 1. Navigate to **Azure Portal** → **rg-streambridge** → **Cosmos DB Account**
-2. Open **Data Explorer**
+2. Open **Data Explorer** 📊
 3. Expand **StreamBridgeDemo** → **TelemetryData**
 4. Click **Items** to see stored documents
-5. Verify documents contain:
-   - `deviceId`, `region`, `timestamp`
-   - `processingResult` with status
-   - `ingestedAt` timestamp
 
-### 5.2: Check Logic App Run History
+**✅ Verify documents contain:**
+- ✔️ `deviceId`, `region`, `timestamp`
+- ✔️ `processingResult` with status
+- ✔️ `ingestedAt` timestamp
+
+### 5.2: Check Logic App Run History ⚡
 
 1. Navigate to **Logic App** → **Workflows** → **TelemetryIngestion**
 2. Click **Run history**
 3. Click on a run to see:
-   - Trigger input/output
-   - Each action's execution
-   - Duration and status
+   - ✅ Trigger input/output
+   - ✅ Each action's execution
+   - ⏱️ Duration and status
 
-### 5.3: Check Function App Invocations
+### 5.3: Check Function App Invocations 🐍
 
 1. Navigate to **Function App** → **Functions** → **ProcessCrashDump**
 2. Click **Monitor**
 3. View:
-   - Invocation logs
-   - Success/failure counts
-   - Duration metrics
+   - 📋 Invocation logs
+   - ✅ Success/failure counts
+   - ⏱️ Duration metrics
 
-### 5.4: Check APIM Analytics
+### 5.4: Check APIM Analytics 🔐
 
 1. Navigate to **API Management** → **Analytics**
 2. View:
-   - Request count
-   - Response times
-   - Error rates
-   - Geographic distribution
+   - 📊 Request count
+   - ⏱️ Response times
+   - ❌ Error rates
+   - 🌍 Geographic distribution
 
 ---
 
-## Part 6: Cleanup
+## 🧹 Part 6: Cleanup
 
 ```powershell
-# Delete all resources
+# 🗑️ Delete all resources
 az group delete --name rg-streambridge --yes --no-wait
 
-# Verify deletion
+# ✅ Verify deletion
 az group show --name rg-streambridge 2>&1
 # Should return "Resource group not found"
 ```
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### Issue: APIM returns 500 error
+### ❌ Issue: APIM returns 500 error
 
-**Cause:** Logic App callback URL not configured
+| Cause | Solution |
+|-------|----------|
+| 🔗 Logic App callback URL not configured | 1. Get Logic App workflow URL from Azure Portal<br>2. Update APIM named value `LogicAppCallbackUrl`<br>3. Verify APIM policy references the named value |
 
-**Solution:**
-1. Get Logic App workflow URL from Azure Portal
-2. Update APIM named value `LogicAppCallbackUrl`
-3. Verify APIM policy references the named value
+### ❌ Issue: Function App not responding
 
-### Issue: Function App not responding
+| Cause | Solution |
+|-------|----------|
+| 📦 Code not deployed or cold start | 1. Check Function App is running: `az functionapp show --name <name> --query state`<br>2. Redeploy code: `func azure functionapp publish <name>`<br>3. Wait for cold start (10-20 seconds) |
 
-**Cause:** Code not deployed or cold start
+### ❌ Issue: Cosmos DB permission denied
 
-**Solution:**
-1. Check Function App is running: `az functionapp show --name <name> --query state`
-2. Redeploy code: `func azure functionapp publish <name>`
-3. Wait for cold start (first request may take 10-20 seconds)
+| Cause | Solution |
+|-------|----------|
+| 🔐 Managed identity role not assigned | Run the commands below |
 
-### Issue: Cosmos DB permission denied
-
-**Cause:** Managed identity role not assigned
-
-**Solution:**
 ```powershell
-# Assign Cosmos DB Data Contributor role
+# 🔧 Assign Cosmos DB Data Contributor role
 $logicAppPrincipalId = az webapp identity show `
     --name <logicAppName> `
     --resource-group rg-streambridge `
@@ -373,50 +431,48 @@ az cosmosdb sql role assignment create `
     --scope "/"
 ```
 
-### Issue: Rate limit hit during demo
+### ❌ Issue: Rate limit hit during demo
 
-**Solution:**
-- Wait 60 seconds for rate limit window to reset
-- Or use a different subscription key
-
----
-
-## Demo Talking Points
-
-### Architecture Benefits
-
-1. **Serverless & Cost-Effective**
-   - Pay only for what you use
-   - Auto-scales to zero when idle
-   - No infrastructure management
-
-2. **Security**
-   - API key authentication at APIM
-   - Managed identity (no credentials in code)
-   - TLS encryption everywhere
-
-3. **Observability**
-   - Built-in monitoring with App Insights
-   - Logic Apps visual run history
-   - Cosmos DB query metrics
-
-4. **Scalability**
-   - APIM handles millions of requests
-   - Cosmos DB auto-partitions by region
-   - Functions scale to demand
-
-### Use Cases
-
-- IoT telemetry ingestion
-- Application crash reporting
-- Event streaming pipelines
-- Log aggregation systems
+| Cause | Solution |
+|-------|----------|
+| 🚦 Exceeded 100 req/min | ⏳ Wait 60 seconds for rate limit window to reset<br>🔑 Or use a different subscription key |
 
 ---
 
-## Next Steps
+## 🎤 Demo Talking Points
 
-- Add more telemetry types
-- Integrate with Power BI for dashboards
-- Add alerts for crash patterns
-- Implement data retention policies
+### 🏗️ Architecture Benefits
+
+| Benefit | Details |
+|---------|---------|
+| 🚀 **Serverless & Cost-Effective** | Pay only for what you use • Auto-scales to zero when idle • No infrastructure management |
+| 🔒 **Security** | API key authentication at APIM • Managed identity (no credentials in code) • TLS encryption everywhere |
+| 📊 **Observability** | Built-in monitoring with App Insights • Logic Apps visual run history • Cosmos DB query metrics |
+| 📈 **Scalability** | APIM handles millions of requests • Cosmos DB auto-partitions by region • Functions scale to demand |
+
+### 💡 Use Cases
+
+| Use Case | Icon |
+|----------|------|
+| IoT telemetry ingestion | 📡 |
+| Application crash reporting | 💥 |
+| Event streaming pipelines | 🔄 |
+| Log aggregation systems | 📋 |
+
+---
+
+## 🔮 Next Steps
+
+| Enhancement | Description |
+|-------------|-------------|
+| ➕ Add more telemetry types | Support additional event schemas |
+| 📊 Integrate with Power BI | Create real-time dashboards |
+| 🔔 Add alerts for crash patterns | Automated incident detection |
+| 🗑️ Implement data retention policies | TTL-based cleanup |
+
+---
+
+<p align="center">
+  <b>📘 Demo Guide Complete!</b><br>
+  <sub>StreamBridge - Serverless Telemetry Pipeline</sub>
+</p>
